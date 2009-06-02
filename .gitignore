@@ -1,0 +1,5 @@
+.*.swp
+c_bindings/*.c
+c_bindings/*.h
+lua_bindings/*.c
+lua_bindings/*.h

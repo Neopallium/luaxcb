@@ -1,0 +1,4 @@
+This project has a Lua port of the bindings generator written in python from the xcb project.
+
+Right now the c_client.lua & xcbgen/*.lua files can generate C bindings just like the official generator.  The lua_client.lua file is a start of a Lua bindings generator.
+
