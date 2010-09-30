@@ -49,7 +49,7 @@ authorization from the authors.
   </enum>
 
   <event name="Notify" number="0">
-    <field type="KIND" name="shape_kind" />
+    <field type="KIND" name="shape_kind" enum="SK" />
     <field type="WINDOW" name="affected_window" />
     <field type="INT16" name="extents_x" />
     <field type="INT16" name="extents_y" />
@@ -57,6 +57,7 @@ authorization from the authors.
     <field type="CARD16" name="extents_height" />
     <field type="TIMESTAMP" name="server_time" />
     <field type="BOOL" name="shaped" />
+    <pad bytes="11" />
   </event>
 
   <request name="QueryVersion" opcode="0">
@@ -68,9 +69,9 @@ authorization from the authors.
   </request>
 
   <request name="Rectangles" opcode="1">
-    <field type="OP" name="operation" />
-    <field type="KIND" name="destination_kind" />
-    <field type="BYTE" name="ordering" />
+    <field type="OP" name="operation" enum="SO" />
+    <field type="KIND" name="destination_kind" enum="SK" />
+    <field type="BYTE" name="ordering" enum="ClipOrdering" />
     <pad bytes="1" />
     <field type="WINDOW" name="destination_window" />
     <field type="INT16" name="x_offset" />
@@ -79,19 +80,19 @@ authorization from the authors.
   </request>
 
   <request name="Mask" opcode="2">
-    <field type="OP" name="operation" />
-    <field type="KIND" name="destination_kind" />
+    <field type="OP" name="operation" enum="SO" />
+    <field type="KIND" name="destination_kind" enum="SK" />
     <pad bytes="2" />
     <field type="WINDOW" name="destination_window" />
     <field type="INT16" name="x_offset" />
     <field type="INT16" name="y_offset" />
-    <field type="PIXMAP" name="source_bitmap" />
+    <field type="PIXMAP" name="source_bitmap" altenum="Pixmap" />
   </request>
 
   <request name="Combine" opcode="3">
-    <field type="OP" name="operation" />
-    <field type="KIND" name="destination_kind" />
-    <field type="KIND" name="source_kind" />
+    <field type="OP" name="operation" enum="SO" />
+    <field type="KIND" name="destination_kind" enum="SK" />
+    <field type="KIND" name="source_kind" enum="SK" />
     <pad bytes="1" />
     <field type="WINDOW" name="destination_window" />
     <field type="INT16" name="x_offset" />
@@ -100,7 +101,7 @@ authorization from the authors.
   </request>
 
   <request name="Offset" opcode="4">
-    <field type="KIND" name="destination_kind" />
+    <field type="KIND" name="destination_kind" enum="SK" />
     <pad bytes="3" />
     <field type="WINDOW" name="destination_window" />
     <field type="INT16" name="x_offset" />
@@ -128,6 +129,7 @@ authorization from the authors.
   <request name="SelectInput" opcode="6">
     <field type="WINDOW" name="destination_window" />
     <field type="BOOL" name="enable" />
+    <pad bytes="3" />
   </request>
 
   <request name="InputSelected" opcode="7">
@@ -139,10 +141,12 @@ authorization from the authors.
 
   <request name="GetRectangles" opcode="8">
     <field type="WINDOW" name="window" />
-    <field type="KIND" name="source_kind" />
+    <field type="KIND" name="source_kind" enum="SK" />
+    <pad bytes="3" />
     <reply>
-      <field type="BYTE" name="ordering" />
+      <field type="BYTE" name="ordering" enum="ClipOrdering" />
       <field type="CARD32" name="rectangles_len" />
+      <pad bytes="20" />
       <list type="RECTANGLE" name="rectangles">
         <fieldref>rectangles_len</fieldref>
       </list>

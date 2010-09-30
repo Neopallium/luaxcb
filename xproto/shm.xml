@@ -34,10 +34,10 @@ authorization from the authors.
   <event name="Completion" number="0">
     <pad bytes="1" />
     <field type="DRAWABLE" name="drawable" />
-    <field type="SEG" name="shmseg" />
     <field type="CARD16" name="minor_event" />
     <field type="BYTE" name="major_event" />
     <pad bytes="1" />
+    <field type="SEG" name="shmseg" />
     <field type="CARD32" name="offset" />
   </event>
 
@@ -51,6 +51,7 @@ authorization from the authors.
       <field type="CARD16" name="uid" />
       <field type="CARD16" name="gid" />
       <field type="CARD8" name="pixmap_format" />
+      <pad bytes="15" />
     </reply>
   </request>
 
@@ -58,6 +59,7 @@ authorization from the authors.
     <field type="SEG" name="shmseg" />
     <field type="CARD32" name="shmid" />
     <field type="BOOL" name="read_only" />
+    <pad bytes="3" />
   </request>
 
   <request name="Detach" opcode="2">

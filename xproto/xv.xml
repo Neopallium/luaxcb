@@ -58,9 +58,37 @@ authorization from the authors.
         <item name="Settable"><bit>1</bit></item>
     </enum>
     
+    <enum name="VideoNotifyReason">
+	<item name="Started" />
+	<item name="Stopped" />
+	<item name="Busy" />
+	<item name="Preempted" />
+	<item name="HardError" />
+    </enum>
+
+    <enum name="ScanlineOrder">
+        <item name="TopToBottom" />
+        <item name="BottomToTop" />
+    </enum>
+
+    <enum name="GrabPortStatus">
+        <item name="Success" />
+        <item name="BadExtension" />
+        <item name="AlreadyGrabbed" />
+        <item name="InvalidTime" />
+        <item name="BadReply" />
+        <item name="BadAlloc" />
+    </enum>
+
     <struct name="Rational">
         <field type="INT32" name="numerator" />
         <field type="INT32" name="denominator" />
+    </struct>
+
+    <struct name="Format">
+        <field type="VISUALID" name="visual" />
+        <field type="CARD8" name="depth" />
+        <pad bytes="3" />
     </struct>
 
     <struct name="AdaptorInfo">
@@ -68,8 +96,8 @@ authorization from the authors.
         <field type="CARD16" name="name_size" />
         <field type="CARD16" name="num_ports" />
         <field type="CARD16" name="num_formats" />
-        <field type="CARD8" name="type" />
-        <field type="CARD8" name="pad" />
+        <field type="CARD8" name="type" mask="Type" />
+        <pad bytes="1" />
         <list type="char" name="name">
             <fieldref>name_size</fieldref>
         </list>
@@ -84,19 +112,15 @@ authorization from the authors.
         <field type="CARD16" name="name_size" />
         <field type="CARD16" name="width" />
         <field type="CARD16" name="height" />
-        <field type="Rational" name="rate" />
         <!--
-        Xvproto.h has a padding CARD16 here but the name
-        overlaps.
+        Some versions of Xvproto.h incorrectly have
+        this padding after "rate".
         -->
+        <pad bytes="2" />
+        <field type="Rational" name="rate" />
         <list type="char" name="name">
             <fieldref>name_size</fieldref>
         </list>
-    </struct>
-
-    <struct name="Format">
-        <field type="VISUALID" name="visual" />
-        <field type="CARD8" name="depth" />
     </struct>
 
     <struct name="Image">
@@ -118,7 +142,7 @@ authorization from the authors.
     </struct>
     
     <struct name="AttributeInfo">
-        <field type="CARD32" name="flags" />
+        <field type="CARD32" name="flags" mask="AttributeFlag" />
         <field type="INT32" name="min" />
         <field type="INT32" name="max" />
         <field type="CARD32" name="size" />
@@ -129,24 +153,22 @@ authorization from the authors.
 
     <struct name="ImageFormatInfo">
         <field type="CARD32" name="id" />
-        <field type="CARD8" name="type" />
-        <field type="CARD8" name="byte_order" />
-        <field type="CARD16" name="pad1" />
+        <field type="CARD8" name="type" enum="ImageFormatInfoType" />
+        <field type="CARD8" name="byte_order" enum="ImageOrder" />
+        <pad bytes="2" />
         <list type="CARD8" name="guid">
             <value>16</value>
         </list>
         <field type="CARD8" name="bpp" />
         <field type="CARD8" name="num_planes" />
-        <field type="CARD16" name="pad2" />
+        <pad bytes="2" />
         <field type="CARD8" name="depth" />
-        <field type="CARD8" name="pad3" />
-        <field type="CARD16" name="pad4" />
+        <pad bytes="3" />
         <field type="CARD32" name="red_mask" />
         <field type="CARD32" name="green_mask" />
         <field type="CARD32" name="blue_mask" />
-        <field type="CARD8" name="format" />
-        <field type="CARD8" name="pad5" />
-        <field type="CARD16" name="pad6" />
+        <field type="CARD8" name="format" enum="ImageFormatInfoFormat" />
+        <pad bytes="3" />
         <field type="CARD32" name="y_sample_bits" />
         <field type="CARD32" name="u_sample_bits" />
         <field type="CARD32" name="v_sample_bits" />
@@ -159,11 +181,8 @@ authorization from the authors.
         <list type="CARD8" name="vcomp_order">
             <value>32</value>
         </list>
-        <field type="CARD8" name="vscanline_order" />
-        <field type="CARD8" name="vpad7" />
-        <field type="CARD16" name="vpad8" />
-        <field type="CARD32" name="vpad9" />
-        <field type="CARD32" name="vpad10" />
+        <field type="CARD8" name="vscanline_order" enum="ScanlineOrder" />
+        <pad bytes="11" />
     </struct>
 
 
@@ -174,7 +193,7 @@ authorization from the authors.
 
     <!-- Events -->
     <event name="VideoNotify" number="0">
-        <field type="BYTE" name="reason" />
+        <field type="BYTE" name="reason" enum="VideoNotifyReason" />
         <field type="TIMESTAMP" name="time" />
         <field type="DRAWABLE" name="drawable" />
         <field type="PORT" name="port" />
@@ -228,15 +247,15 @@ authorization from the authors.
 
     <request name="GrabPort" opcode="3">
         <field type="PORT" name="port" />
-        <field type="TIMESTAMP" name="time" />
+        <field type="TIMESTAMP" name="time" altenum="Time" />
         <reply>
-            <field type="BYTE" name="result" />
+            <field type="BYTE" name="result" enum="GrabPortStatus" />
         </reply>
     </request>
 
     <request name="UngrabPort" opcode="4">
         <field type="PORT" name="port" />
-        <field type="TIMESTAMP" name="time" />
+        <field type="TIMESTAMP" name="time" altenum="Time" />
     </request>
 
     <request name="PutVideo" opcode="5">
@@ -303,11 +322,13 @@ authorization from the authors.
     <request name="SelectVideoNotify" opcode="10">
         <field type="DRAWABLE" name="drawable" />
         <field type="BOOL" name="onoff" />
+        <pad bytes="3" />
     </request>
 
     <request name="SelectPortNotify" opcode="11">
         <field type="PORT" name="port" />
         <field type="BOOL" name="onoff" />
+        <pad bytes="3" />
     </request>
 
     <request name="QueryBestSize" opcode="12">
@@ -317,6 +338,7 @@ authorization from the authors.
         <field type="CARD16" name="drw_w" />
         <field type="CARD16" name="drw_h" />
         <field type="BOOL" name="motion" />
+        <pad bytes="3" />
         <reply>
             <pad bytes="1" />
             <field type="CARD16" name="actual_width" />
@@ -423,5 +445,6 @@ authorization from the authors.
         <field type="CARD16" name="width" />
         <field type="CARD16" name="height" />
         <field type="CARD8" name="send_event" />
+        <pad bytes="3" />
     </request>
 </xcb>
