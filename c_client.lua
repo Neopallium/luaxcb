@@ -9,6 +9,11 @@ require('xcbgen.state')
 require('xcbgen.xtypes')
 
 local output_dir = nil
+local mod = nil
+
+local warn = function(...)
+	io.stderr:write(table.concat({...},'\t') .. '\n')
+end
 
 -- Jump to the bottom of this file for the main routine
 
@@ -17,7 +22,7 @@ _cname_re = '([A-Z0-9][a-z]+|[A-Z0-9]+(?![a-z])|[a-z]+)'
 _cname_special_cases = {DECnet='decnet'}
 
 _extension_special_cases = {
-	['XPrint'] = true, ['XCMisc'] = true, ['BigRequests'] = true
+	XPrint = true, XCMisc = true, BigRequests = true
 }
 
 _cplusplus_annoyances = {
@@ -26,20 +31,6 @@ _cplusplus_annoyances = {
 	delete= '_delete'
 }
 
-_cardinal_types = {
-	['CARD8'] = true, ['uint8_t'] = true,
-	['CARD16'] = true,['uint16_t'] = true,
-	['CARD32'] = true,['uint32_t'] = true,
-	['INT8'] = true, ['int8_t'] = true,
-	['INT16'] = true, ['int16_t'] = true,
-	['INT32'] = true, ['int32_t'] = true,
-	['BYTE'] = true,
-	['BOOL'] = true,
-	['char'] = true,
-	['void'] = true,
-	['float'] = true,
-	['double'] = true
-}
 _hlines = {}
 _hlevel = 0
 _clines = {}
@@ -190,6 +181,9 @@ local function c_open(self)
 	_ns = self.namespace
 	_ns.c_ext_global_name = _n(tabcat(_ns.prefix, 'id'))
 
+	-- Build the type-name collision avoidance table used by c_enum
+	build_collision_table()
+
 	_h_setlevel(1)
 	_c_setlevel(1)
 
@@ -214,12 +208,19 @@ local function c_open(self)
 	_c('#include <assert.h>')
 	_c('#include "xcbext.h"')
 	_c('#include "%s.h"', _ns.header)
-		
+
 	if _ns.is_ext then
 		for _,h in ipairs(self.import_list) do
 			_hc('#include "%s.h"', h)
 		end
+	end
 
+	_h('')
+	_h('#ifdef __cplusplus')
+	_h('extern "C" {')
+	_h('#endif')
+
+	if _ns.is_ext then
 		_h('')
 		_h('#define XCB_%s_MAJOR_VERSION %s', _ns.ext_name:upper(), _ns.major_version)
 		_h('#define XCB_%s_MINOR_VERSION %s', _ns.ext_name:upper(), _ns.minor_version)
@@ -227,7 +228,7 @@ local function c_open(self)
 		_h('extern xcb_extension_t %s;', _ns.c_ext_global_name)
 
 		_c('')
-		_c('xcb_extension_t %s = { "%s" };', _ns.c_ext_global_name, _ns.ext_xname)
+		_c('xcb_extension_t %s = { "%s", 0 };', _ns.c_ext_global_name, _ns.ext_xname)
 	end
 end
 
@@ -239,6 +240,12 @@ local function c_close(self)
 	_h_setlevel(3)
 	_c_setlevel(3)
 	_hc('')
+
+	_h('')
+	_h('#ifdef __cplusplus')
+	_h('}')
+	_h('#endif')
+
 	_h('')
 	_h('#endif')
 	_h('')
@@ -267,13 +274,28 @@ local function c_close(self)
 	cfile:close()
 end
 
+namecount = {}
+function build_collision_table()
+	namecount = {}
+	for k,v in pairs(mod.types) do
+		local name = _t(v[1])
+		namecount[name] = (namecount[name] or 0) + 1
+	end
+end
+
 local function c_enum(self, name)
 	--[[
 	Exported function that handles enum declarations.
 	]]
+
+	local tname = _t(name)
+	if (namecount[tname] or 0) > 1 then
+		tname = _t(tabcat(name, 'enum'))
+	end
+
 	_h_setlevel(1)
 	_h('')
-	_h('typedef enum %s {', _t(name))
+	_h('typedef enum %s {', tname)
 
 	local count = #self.values
 
@@ -285,7 +307,7 @@ local function c_enum(self, name)
 		_h('    %s%s%s%s', _n(tabcat(name, enam)):upper(), equals, eval, comma)
 	end
 
-	_h('} %s;', _t(name))
+	_h('} %s;', tname)
 end
 
 local function _c_type_setup(self, name, postfix, depth)
@@ -372,7 +394,7 @@ local function _c_iterator_get_end(field, accum)
 	end
 	if field.type_.is_list then
 		-- XXX we can always use the first way
-		if _cardinal_types[field.type_.c_type] then
+		if field.type_.member.is_simple then
 			return field.c_end_name .. '(' .. accum .. ')'
 		else
 			return field.type_.member.c_end_name .. '(' .. field.c_iterator_name .. '(' .. accum .. '))'
@@ -520,7 +542,7 @@ local function _c_accessors_field(self, field)
 	--[[
 	Declares the accessor functions for a non-list field that follows a variable-length field.
 	]]
-	if _cardinal_types[field.field_type[1]] then
+	if field.type_.is_simple then
 		_hc('')
 		_hc('')
 		_hc('/*****************************************************************************')
@@ -616,7 +638,7 @@ local function _c_accessors_list(self, field)
 	_c('    return %s;', _c_accessor_get_expr(field.type_.expr, 'R'))
 	_c('}')
 
-	if _cardinal_types[field.field_type[1]] then
+	if field.type_.member.is_simple then
 		_hc('')
 		_hc('')
 		_hc('/*****************************************************************************')
@@ -725,12 +747,18 @@ local function _c_complex(self)
 	local struct_fields = {}
 	local maxtypelen = 0
 
+	local varfield = nil
 	for _,field in ipairs(self.fields) do
 		if not field.type_:fixed_size() then
-			break
-		end
-		if field.wire then
-			table.insert(struct_fields, field)
+			varfield = field.c_field_name
+		else
+			if varfield ~= nil and not field.type_.is_pad and field.wire then
+				warn(string.format("%s: warning: variable field %s followed by fixed field %s\n",
+					self.c_type, varfield, field.c_field_name))
+			end
+			if field.wire then
+				table.insert(struct_fields, field)
+			end
 		end
 	end
 		

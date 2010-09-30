@@ -136,7 +136,7 @@ function Enum:__init(name, elt)
 				table.insert(self.values, {item.attr['name'], value.text})
 			elseif value.tag == 'bit' then
 				-- XXX replace this with a simple number, please.
-				table.insert(self.values, {item.attr['name'], '(1 << ' .. value.text .. ')'})
+				table.insert(self.values, {item.attr['name'], tostring(2 ^ tonumber(value.text))})
 			end
 		end
 	end
