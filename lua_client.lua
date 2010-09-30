@@ -25,20 +25,21 @@ _cplusplus_annoyances = {
 	delete= '_delete'
 }
 
-_cardinal_types = {
-	['CARD8'] = true, ['uint8_t'] = true,
-	['CARD16'] = true,['uint16_t'] = true,
-	['CARD32'] = true,['uint32_t'] = true,
-	['INT8'] = true, ['int8_t'] = true,
-	['INT16'] = true, ['int16_t'] = true,
-	['INT32'] = true, ['int32_t'] = true,
-	['BYTE'] = true,
-	['BOOL'] = true,
-	['char'] = true,
-	['void'] = true,
-	['float'] = true,
-	['double'] = true
+-- Map simple C types to Lua types.
+local ctype_to_lua = {
+ uint32_t = { 'integer', "0"},
+ int32_t  = { 'integer', "0"},
+ uint16_t = { 'integer', "0"},
+ int16_t  = { 'integer', "0"},
+ uint8_t  = { 'integer', "0"},
+ int8_t   = { 'integer', "0"},
+ char     = { 'integer', "0"},
+ float    = { 'number', "0"},
+ double   = { 'number', "0"},
 }
+
+_blines = {}
+_blevel = 0
 _hlines = {}
 _hlevel = 0
 _clines = {}
@@ -57,6 +58,13 @@ local function tabcat(tab, ...)
 		end
 	end
 	return tab
+end
+
+local function _b(fmt, ...)
+	--[[
+	Writes the given line to the header file.
+	]]
+	table.insert(_blines[_blevel], fmt:format(...))
 end
 
 local function _h(fmt, ...)
@@ -82,6 +90,17 @@ local function _hc(fmt, ...)
 end
 
 -- XXX See if this level thing is really necessary.
+local function _b_setlevel(idx)
+	--[[
+	Changes the array that header lines are written to.
+	Supports writing different sections of the header file.
+	]]
+	while #_blines <= idx do
+		table.insert(_blines, {})
+	end
+	_blevel = idx
+end
+
 local function _h_setlevel(idx)
 	--[[
 	Changes the array that header lines are written to.
@@ -189,44 +208,14 @@ local function c_open(self)
 	_ns = self.namespace
 	_ns.c_ext_global_name = _n(tabcat(_ns.prefix, 'id'))
 
-	_h_setlevel(1)
-	_c_setlevel(1)
+	_b_setlevel(1)
+	_b('sys_include "xcb/%s.h"', _ns.header)
 
-	_hc('/*')
-	_hc(' * This file generated automatically from %s by c_client.py.', _ns.file)
-	_hc(' * Edit at your peril.')
-	_hc(' */')
-	_hc('')
-
-	_h('/**')
-	_h(' * @defgroup XCB_%s_API XCB %s API', _ns.ext_name, _ns.ext_name)
-	_h(' * @brief %s XCB Protocol Implementation.', _ns.ext_name)
-	_h(' * @{')
-	_h(' **/')
-	_h('')
-	_h('#ifndef __%s_H', _ns.header:upper())
-	_h('#define __%s_H', _ns.header:upper())
-	_h('')
-	_h('#include "xcb.h"')
-
-	_c('#include <string.h>')
-	_c('#include <assert.h>')
-	_c('#include "xcbext.h"')
-	_c('#include "%s.h"', _ns.header)
-		
 	if _ns.is_ext then
 		for _,h in ipairs(self.import_list) do
-			_hc('#include "%s.h"', h)
+			_b('sys_include "xcb/%s.h"', h)
 		end
 
-		_h('')
-		_h('#define XCB_%s_MAJOR_VERSION %s', _ns.ext_name:upper(), _ns.major_version)
-		_h('#define XCB_%s_MINOR_VERSION %s', _ns.ext_name:upper(), _ns.minor_version)
-		_h('  ') -- XXX
-		_h('extern xcb_extension_t %s;', _ns.c_ext_global_name)
-
-		_c('')
-		_c('xcb_extension_t %s = { "%s" };', _ns.c_ext_global_name, _ns.ext_xname)
 	end
 end
 
@@ -235,44 +224,23 @@ local function c_close(self)
 	Exported function that handles module close.
 	Writes out all the stored content lines, then closes the files.
 	]]
-	_h_setlevel(3)
-	_c_setlevel(3)
-	_hc('')
-	_h('')
-	_h('#endif')
-	_h('')
-	_h('/**')
-	_h(' * @}')
-	_h(' */')
 
-	-- Write header file
-	local hfile = io.open(('%s/%s.h'):format(output_dir, _ns.header), 'w')
-	for i,list in ipairs(_hlines) do
+	-- Write Lua bindings file
+	local bfile = assert(io.open(('%s/%s.lua'):format(output_dir, _ns.header), 'w'))
+	for i,list in ipairs(_blines) do
 		for i,line in ipairs(list) do
-			hfile:write(line)
-			hfile:write('\n')
+			bfile:write(line)
+			bfile:write('\n')
 		end
 	end
-	hfile:close()
+	bfile:close()
 
-	-- Write source file
-	local cfile = io.open(('%s/%s.c'):format(output_dir, _ns.header), 'w')
-	for i,list in ipairs(_clines) do
-		for i,line in ipairs(list) do
-			cfile:write(line)
-			cfile:write('\n')
-		end
-	end
-	cfile:close()
 end
 
 local function c_enum(self, name)
 	--[[
 	Exported function that handles enum declarations.
 	]]
-	_h_setlevel(1)
-	--_h('')
-	--_h('typedef enum %s {', _t(name))
 
 	local count = #self.values
 
@@ -281,10 +249,8 @@ local function c_enum(self, name)
 		count = count - 1
 		local equals = (((eval ~= '') and ' = ') or '')
 		local comma = (((count > 0) and ',') or '')
-	--	_h('    %s%s%s%s', _n(tabcat(name, enam)):upper(), equals, eval, comma)
 	end
 
-	--_h('} %s;', _t(name))
 end
 
 local function _c_type_setup(self, name, postfix, depth)
@@ -371,7 +337,7 @@ local function _c_iterator_get_end(field, accum)
 	end
 	if field.type_.is_list then
 		-- XXX we can always use the first way
-		if _cardinal_types[field.type_.c_type] then
+		if field.type_.member.is_simple then
 			return field.c_end_name .. '(' .. accum .. ')'
 		else
 			return field.type_.member.c_end_name .. '(' .. field.c_iterator_name .. '(' .. accum .. '))'
@@ -427,6 +393,19 @@ local function _c_accessors_field(self, field)
 	--[[
 	Declares the accessor functions for a non-list field that follows a variable-length field.
 	]]
+	local ret_type = field.c_field_type
+	if not field.type_.is_simple then
+		ret_type = ret_type .. ' *'
+	end
+	_b('')
+	_b('  --')
+	_b('  -- %s %s', ret_type, field.c_accessor_name)
+	_b('  -- ')
+	_b('  -- @returns %s', ret_type)
+	_b('  --')
+	_b('  method "%s" {', field.field_name)
+	_b('    c_method_call "%s" "%s" {},', ret_type, field.c_accessor_name)
+	_b('  },')
 end
 
 local function _c_accessors_list(self, field)
@@ -435,6 +414,68 @@ local function _c_accessors_list(self, field)
 	Declares a direct-accessor function only if the list members are fixed size.
 	Declares length and get-iterator functions always.
 	]]
+	local field_type = field.c_field_type
+	local list = field.type_
+
+	if field_type == 'char' or field_type == 'void' then
+		-- handle as 'string'
+		return _c_accessors_field(self, field)
+	end
+
+	local ret_type = field_type
+	if list.member.is_simple then
+		ret_type = field_type
+	else
+		ret_type = field_type .. ' *'
+	end
+
+	if list.member:fixed_size() then
+		_b('')
+		_b('  --')
+		_b('  -- %s %s', ret_type, field.c_accessor_name)
+		_b('  -- ')
+		_b('  -- @param idx')
+		_b('  -- @returns %s', ret_type)
+		_b('  --')
+		_b('  method "%s" {', field.field_name)
+		_b('    var_in { "int", "idx" },', field.field_name)
+		_b('    var_out { "%s", "ret" },', ret_type)
+		_b('    c_method_call { "%s *", "(list)" } "%s" {},', field_type, field.c_accessor_name)
+		_b('    c_method_call { "int", "(list_len)" } "%s" {},', field.c_length_name)
+		_b('    c_source[[')
+		_b('      if(${idx} >= ${list_len}) {')
+		_b('        return luaL_error(L, "Index out of bounds (%%d >= %%d)", ${idx}, ${list_len});')
+		_b('      }')
+		if field.type_.member.is_simple then
+			_b('      ${ret} = ${list}[${idx}];')
+		else
+			_b('      ${ret} = &(${list}[${idx}]);')
+		end
+		_b('    ]],')
+		_b('    ffi_source[[')
+		_b('      if(${idx} >= ${list_len}) then')
+		_b('        error(string.format("Index out of bounds (" .. ${idx} .. " >= " .. ${list_len} .. ")")')
+		_b('      end')
+		_b('      ${ret} = ${list}[${idx}]')
+		_b('    ]],')
+		_b('  },')
+	end
+
+	_b('')
+	_b('  --')
+	_b('  -- int %s', field.c_length_name)
+	_b('  -- ')
+	_b('  -- @returns int')
+	_b('  --')
+	_b('  method "%s_length" {', field.field_name)
+	_b('    c_method_call "int" "%s" {},', field.c_length_name)
+	_b('  },')
+
+	-- TODO: complex iterators
+	if field.type_.member.is_simple then
+
+	else
+	end
 end
 
 local function _c_accessors(self, name, base)
@@ -459,17 +500,37 @@ local function c_simple(self, name)
 
 	if (self.name ~= name) then
 
+		-- Typedef
+		_b_setlevel(1)
+		local my_name = _t(name)
+		local lua_type = ctype_to_lua[_t(self.name)]
+		if not lua_type then
+			print("----------------- WARNING: unknown ctype:", _t(self.name))
+		end
+		_b('')
+		_b('basetype "%s" "%s" "%s"', my_name, lua_type[1], lua_type[2])
+		_b('basetype "%s *" "nil" "NULL"', my_name)
+
 		-- Iterator
 		_c_iterator(self, name)
 	end
 end
 
-local function _c_complex(self)
+local function _c_complex_end()
+	_b('}')
+	_b('')
+end
+
+local function _c_complex(self, keep_open)
 	--[[
 	Helper function for handling all structure types.
 	Called for all structs, requests, replies, events, errors.
 	]]
-
+	_b_setlevel(2)
+	_b('object "%s" {', self.c_type)
+	if not keep_open then
+		_c_complex_end()
+	end
 end
 
 local function c_struct(self, name)
@@ -477,9 +538,10 @@ local function c_struct(self, name)
 	Exported function that handles structure declarations.
 	]]
 	_c_type_setup(self, name, {})
-	_c_complex(self)
+	_c_complex(self, true)
 	_c_accessors(self, name, name)
 	_c_iterator(self, name)
+	_c_complex_end(self)
 end
 
 local function c_union(self, name)
@@ -487,8 +549,9 @@ local function c_union(self, name)
 	Exported function that handles union declarations.
 	]]
 	_c_type_setup(self, name, {})
-	_c_complex(self)
+	_c_complex(self, true)
 	_c_iterator(self, name)
+	_c_complex_end(self)
 end
 
 local function _c_request_helper(self, name, cookie_type, void, regular)
@@ -708,12 +771,13 @@ local function c_request(self, name)
 	if self.reply then
 		_c_type_setup(self.reply, name, {'reply'})
 		-- Reply structure definition
-		_c_complex(self.reply)
+		_c_complex(self.reply, true)
 		-- Request prototypes
 		_c_request_helper(self, name, self.c_cookie_type, false, true)
 		_c_request_helper(self, name, self.c_cookie_type, false, false)
 		-- Reply accessors
 		_c_accessors(self.reply, tabcat(name, 'reply'), name)
+		_c_complex_end()
 		_c_reply(self, name)
 	else
 		-- Request prototypes

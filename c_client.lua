@@ -253,7 +253,7 @@ local function c_close(self)
 	_h(' */')
 
 	-- Write header file
-	local hfile = io.open(('%s/%s.h'):format(output_dir, _ns.header), 'w')
+	local hfile = assert(io.open(('%s/%s.h'):format(output_dir, _ns.header), 'w'))
 	for i,list in ipairs(_hlines) do
 		for i,line in ipairs(list) do
 			hfile:write(line)
@@ -263,7 +263,7 @@ local function c_close(self)
 	hfile:close()
 
 	-- Write source file
-	local cfile = io.open(('%s/%s.c'):format(output_dir, _ns.header), 'w')
+	local cfile = assert(io.open(('%s/%s.c'):format(output_dir, _ns.header), 'w'))
 	for i,list in ipairs(_clines) do
 		for i,line in ipairs(list) do
 			cfile:write(line)
