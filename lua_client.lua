@@ -1,4 +1,3 @@
-require('luarocks.require')
 oo = require("loop.simple")
 rex = require('rex_pcre')
 
@@ -784,6 +783,13 @@ for i = 1, #arg do
 	else
 		xml_file = val
 	end
+end
+
+if output_dir == nil or xml_file == nil then
+  print([[
+Usage: lua lua_client.lua -o <output_directory> <xproto_file>
+]])
+  return
 end
 
 -- Parse the xml header
