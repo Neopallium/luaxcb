@@ -1,0 +1,13 @@
+Memory management:
+* xcb_get_setup() returns a block of memory that holds multiple sub-structures.
+		This memory can't be freed by Lua and it might be come invalid when the
+		xcb_connection is closed.
+
+* Replies from the server are contained in one continuous block of memory that
+    holds all sub-structures of the reply.
+
+* Need to add some memory referencing system.
+
+* Memory blocks should be read only.  I don't see a need to allow field to be
+		writable.
+
