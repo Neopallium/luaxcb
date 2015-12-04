@@ -28,7 +28,7 @@ Expression = oo.class()
   Represents a mathematical expression for a list length or exprfield.
 
   Public fields:
-  op is the operation (text +,*,/,<<) or nil.
+  op is the operation (text +,*,/,<<,~) or nil.
   lhs and rhs are the sub-Expressions if op is set.
   lenfield_name is the name of the length field, or nil for request lists.
   lenfield is the Field object for the length field, or nil.
@@ -77,6 +77,13 @@ function Expression:__init(elt, parent)
 		if new.lenfield_name == nil then
 			new.lenfield_name = new.rhs.lenfield_name
 		end
+
+	elseif elt.tag == 'unop' then
+		-- Unop field.  Need to recurse.
+		new.op = elt.attr['op']
+		new.rhs = Expression(elt[0], parent)
+
+		new.lenfield_name = new.rhs.lenfield_name
 
 	elseif elt.tag == 'value' then
 		-- Constant expression
