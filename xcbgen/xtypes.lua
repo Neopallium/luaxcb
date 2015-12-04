@@ -164,7 +164,7 @@ function ListType:__init(elt, member, parent)
 	self = Type.__init(self, member.name)
 	self.is_list = true
 	self.member = member
-	self.parent = parent
+	self.parent = parent or {}
 
 	if elt.tag == 'list' then
 		self.expr = Expression(elt[1] or elt, self)
@@ -195,9 +195,11 @@ function ListType:make_member_of(mod, complex_type, field_type, field_name, visi
 		local needlen = true
 
 		-- See if the length field is already in the structure.
-		for _,field in ipairs(self.parent.fields) do
-			if field.field_name == lenfield_name then
-				needlen = false
+		for _,parent in ipairs(self.parent) do
+			for _,field in ipairs(parent.fields) do
+				if field.field_name == lenfield_name then
+					needlen = false
+				end
 			end
 		end
 
@@ -222,10 +224,12 @@ function ListType:resolve(mod)
 	-- Find my length field again.  We need the actual Field object in the expr.
 	-- This is needed because we might have added it ourself above.
 	if not self:fixed_size() then
-		for _,field in ipairs(self.parent.fields) do
-			if field.field_name == self.expr.lenfield_name and field.wire then
-				self.expr.lenfield = field
-				break
+		for _,parent in ipairs(self.parent) do
+			for _,field in ipairs(parent.fields) do
+				if field.field_name == self.expr.lenfield_name and field.wire then
+					self.expr.lenfield = field
+					break
+				end
 			end
 		end
 	end
@@ -248,7 +252,7 @@ function ExprType:__init(elt, member, parent)
 	self = Type.__init(self, member.name)
 	self.is_expr = true
 	self.member = member
-	self.parent = parent
+	self.parent = parent or {}
 
 	self.expr = Expression(elt[1], self)
 
@@ -308,6 +312,7 @@ function ComplexType:__init(name, elt)
 	self.fields = {}
 	self.nmemb = 1
 	self.size = 0
+	self.lenfield_parent = {self}
 	return self
 end
 
@@ -337,17 +342,17 @@ function ComplexType:resolve(mod)
 		elseif child.tag == 'exprfield' then
 			field_name = child.attr['name']
 			fkey = child.attr['type']
-			type_ = ExprType(child, mod:get_type(fkey), self)
+			type_ = ExprType(child, mod:get_type(fkey), self.lenfield_parent)
 			visible = false
 		elseif child.tag == 'list' then
 			field_name = child.attr['name']
 			fkey = child.attr['type']
-			type_ = ListType(child, mod:get_type(fkey), self)
+			type_ = ListType(child, mod:get_type(fkey), self.lenfield_parent)
 			visible = true
 		elseif child.tag == 'valueparam' then
 			field_name = child.attr['value-list-name']
 			fkey = 'CARD32'
-			type_ = ListType(child, mod:get_type(fkey), self)
+			type_ = ListType(child, mod:get_type(fkey), self.lenfield_parent)
 			visible = true
 		else
 			-- Hit this on Reply
