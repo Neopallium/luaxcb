@@ -42,6 +42,7 @@ function Expression:__init(elt, parent)
 		nmemb = nil,
 		lenfield_name = nil,
 		lenfield_type = nil,
+		lenfield_parent = nil,
 		lenfield = nil,
 		lenwire = false,
 		bitfield = false,
@@ -88,6 +89,21 @@ function Expression:__init(elt, parent)
 	elseif elt.tag == 'value' then
 		-- Constant expression
 		new.nmemb = tonumber(elt.text)
+
+	elseif elt.tag == 'popcount' then
+		new.op = 'popcount'
+		new.rhs = Expression(elt[1], parent)
+		new.lenfield_name = new.rhs.lenfield_name
+		-- xcb_popcount returns 'int' - handle the type in the language-specific part
+
+	elseif elt.tag == 'enumref' then
+		new.op = 'enumref'
+		new.lenfield_name = {elt.attr['ref'], elt.text}
+
+	elseif elt.tag == 'sumof' then
+		new.op = 'sumof'
+		new.lenfield_name = elt.attr['ref']
+
 	else
 		-- Notreached
 		error("undefined tag '"..elt.tag.."'")
@@ -98,5 +114,28 @@ end
 
 function Expression:fixed_size()
 	return self.nmemb ~= nil
+end
+
+function Expression:resolve(mod, parents)
+	if self.op == 'enumref' then
+		self.lenfield_type = mod:get_type(self.lenfield_name[1])
+		self.lenfield_name = self.lenfield_name[1]
+	elseif self.op == 'sumof' then
+		-- need to find the field with lenfield_name
+		for _,p in ipairs(parents) do
+			local found = nil
+			for _,f in pairs(p.fields) do
+				if self.lenfield_name == f.field_name then
+					found = f
+					break
+				end
+			end
+			if found then
+				self.lenfield_parent = p
+				self.lenfield_type = found.field_type
+				break
+			end
+		end
+	end
 end
 
