@@ -81,7 +81,7 @@ function Expression:__init(elt, parent)
 	elseif elt.tag == 'unop' then
 		-- Unop field.  Need to recurse.
 		new.op = elt.attr['op']
-		new.rhs = Expression(elt[0], parent)
+		new.rhs = Expression(elt[1], parent)
 
 		new.lenfield_name = new.rhs.lenfield_name
 
@@ -90,7 +90,7 @@ function Expression:__init(elt, parent)
 		new.nmemb = tonumber(elt.text)
 	else
 		-- Notreached
-		error('XXX')
+		error("undefined tag '"..elt.tag.."'")
 	end
 
 	return oo.rawnew(self, new)
