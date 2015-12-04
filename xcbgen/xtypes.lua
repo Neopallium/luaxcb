@@ -1,6 +1,7 @@
 -- This module contains the classes which represent XCB data types.
 
 local oo = require "loop.simple"
+local unpack = table.unpack or unpack
 
 Type = oo.class()
 --[[
@@ -28,7 +29,8 @@ function Type:__init(name, obj)
 	is_expr = false,
 	is_container = false,
 	is_reply = false,
-	is_pad = false
+	is_pad = false,
+	is_switch = false,
 	}
 	return oo.rawnew(self, new)
 end
@@ -220,6 +222,7 @@ function ListType:resolve(mod)
 		return
 	end
 	self.member:resolve(mod)
+	self.expr:resolve(mod, self.parent)
 
 	-- Find my length field again.  We need the actual Field object in the expr.
 	-- This is needed because we might have added it ourself above.
@@ -325,6 +328,7 @@ function ComplexType:resolve(mod)
 	local visible = nil
 	local fkey = nil
 	local field_name = nil
+	local field_type = nil
 
 	-- Resolve all of our field datatypes.
 	for _,child in ipairs(self.elt) do
@@ -354,14 +358,24 @@ function ComplexType:resolve(mod)
 			fkey = 'CARD32'
 			type_ = ListType(child, mod:get_type(fkey), self.lenfield_parent)
 			visible = true
+		elseif child.tag == 'switch' then
+			field_name = child.attr['name']
+			-- construct the switch type name from the parent type and the field name
+			field_type = { unpack(self.name) }
+			field_type[#field_type + 1] = field_name
+			type_ = SwitchType(field_type, child, self.lenfield_parent)
+			visible = true
+			type_:make_member_of(mod, self, field_type, field_name, visible, true, false)
+			type_:resolve(mod)
+			field_name = nil -- continue
 		else
 			-- Hit this on Reply
-			field_name = nil
+			field_name = nil -- continue
 		end
 
 		if field_name ~= nil then
 			-- Get the full type name for the field
-			local field_type = mod:get_type_name(fkey)
+			field_type = mod:get_type_name(fkey)
 			-- Add the field to ourself
 			type_:make_member_of(mod, self, field_type, field_name, visible, true, false)
 			-- Recursively resolve the type (could be another structure, list)
@@ -398,6 +412,122 @@ function ComplexType:fixed_size()
 end
 
 
+SwitchType = oo.class({}, ComplexType)
+--[[
+Derived class which represents a List of Items.
+
+Public fields added:
+bitcases is an array of Bitcase objects describing the list items
+]]
+
+function SwitchType:__init(name, elt, parents)
+	self = ComplexType.__init(self, name, elt)
+	self.parent = parents
+	-- FIXME: switch cannot store lenfields, so it should just delegate the parents
+	self.lenfield_parent = {self, unpack(parents)}
+	-- self.fields contains all possible fields collected from the Bitcase objects,
+	-- whereas self.items contains the Bitcase objects themselves
+	self.bitcases = {}
+
+	self.is_switch = true
+	self.expr = Expression(elt[1] or elt, self)
+	return self
+end
+
+function SwitchType:resolve(mod)
+	if self.resolved then
+		return
+	end
+	local type_ = nil
+	local visible = nil
+	local field_name = nil
+	local field_type = nil
+
+	-- Resolve all of our field datatypes.
+	for index, child in ipairs(self.elt) do
+		if child.tag == 'bitcase' then
+			-- use self.parent to indicate anchestor,
+			-- as switch does not contain named fields itself
+			type_ = BitcaseType(index, child, self.parent)
+			visible = true
+
+			-- Get the full type name for the field
+			field_type = type_.name
+
+			-- add the field to ourself
+			type_:make_member_of(mod, self, field_type, index, visible, true, false)
+
+			-- recursively resolve the type (could be another structure, list)
+			type_:resolve(mod)
+			local inserted = false
+			for _,new_field in ipairs(type_.fields) do
+				-- We dump the _placeholder_byte if any fields are added.
+				for idx, field in ipairs(self.fields) do
+					if field == _placeholder_byte then
+						self.fields[idx] = new_field
+						inserted = true
+						break
+					end
+				end
+				if false == inserted then
+					self.fields[#self.fields + 1] = new_field
+				end
+			end
+		end
+	end
+
+	self:calc_size() -- Figure out how big we are
+	self.resolved = true
+end
+
+-- FIXME: really necessary for Switch??
+function SwitchType:make_member_of(mod, complex_type, field_type, field_name, visible, wire, auto)
+	if not self:fixed_size() then
+		-- We need a length field.
+		-- Ask our Expression object for it's name, type, and whether it's on the wire.
+		local lenfid = self.expr.lenfield_type
+		local lenfield_name = self.expr.lenfield_name
+		lenwire = self.expr.lenwire
+		needlen = true
+
+		-- See if the length field is already in the structure.
+		for _,parent in ipairs(self.parent) do
+			for _,field in ipairs(parent.fields) do
+				if field.field_name == lenfield_name then
+					needlen = false
+				end
+			end
+		end
+
+		-- It isn't, so we need to add it to the structure ourself.
+		if needlen then
+			local type_ = mod.get_type(lenfid)
+			local lenfield_type = mod.get_type_name(lenfid)
+			type_:make_member_of(mod, complex_type, lenfield_type, lenfield_name, true, lenwire, false)
+		end
+	end
+
+	-- Add ourself to the structure by calling our original method.
+	Type.make_member_of(self, mod, complex_type, field_type, field_name, visible, wire, auto)
+end
+
+-- size for switch can only be calculated at runtime
+function SwitchType:calc_size()
+end
+
+-- note: switch is _always_ of variable size, but we indicate here wether
+-- it contains elements that are variable-sized themselves
+function SwitchType:fixed_size()
+	return false
+--	for _,m in ipairs(self.fields) do
+--		if not m.type:fixed_size() then
+--			return false
+--    end
+--  end
+--	return true
+end
+
+
 Struct = oo.class({}, ComplexType)
 --[[
 Derived class representing a struct data type.
@@ -412,6 +542,54 @@ function Union:__init(name, elt)
 	self = ComplexType.__init(self, name, elt)
 	self.is_union = true
 	return self
+end
+
+
+BitcaseType = oo.class({}, ComplexType)
+--[[
+Derived class representing a struct data type.
+]]
+function BitcaseType:__init(index, elt, parent)
+	self.expr = Expression(elt[1] or elt, self)
+	-- first first elt (copy table)
+	elt = { unpack(elt) } -- copy
+	table.remove(elt, 1)
+	self = ComplexType.__init(self, {'bitcase' .. index}, elt)
+	self.lenfield_parent = {self, unpack(parent)}
+	self.parents = parent
+	return self
+end
+
+function BitcaseType:make_member_of(mod, switch_type, field_type, field_name, visible, wire, auto)
+	--[[
+	register BitcaseType with the corresponding SwitchType
+
+	module is the global module object.
+	complex_type is the structure object.
+	see Field for the meaning of the other parameters.
+	]]
+	local new_field = Field(self, field_type, field_name, visible, wire, auto)
+
+	-- We dump the _placeholder_byte if any bitcases are added.
+	for idx, field in ipairs(switch_type.bitcases) do
+		if field == _placeholder_byte then
+			switch_type.bitcases[idx] = new_field
+			return
+		end
+	end
+
+	switch_type.bitcases[#switch_type.bitcases + 1] = new_field
+end
+
+function BitcaseType:resolve(mod)
+	if self.resolved then
+		return
+	end
+
+	self.expr:resolve(mod, { self, unpack(self.parents) })
+
+	-- Resolve the bitcase expression
+	ComplexType.resolve(self, mod)
 end
 
 
